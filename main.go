@@ -24,8 +24,8 @@ import (
 
 const (
 	csvFile      = "<some-csv-file>"
-	panoramaNode = "<IP/hostname" // Panorama IP/Hostname
-	pktCount     = 4             // How many ping packets to send to a host
+	panoramaNode = "<IP/hostname>" // Panorama IP/Hostname
+	pktCount     = 4               // How many ping packets to send to a host
 )
 
 var (
