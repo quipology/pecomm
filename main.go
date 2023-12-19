@@ -9,10 +9,14 @@ package main
 
 import (
 	"bufio"
-	"encoding/csv"
+	"flag"
 	"fmt"
+	"net/netip"
 	"os"
+	"regexp"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,14 +27,16 @@ import (
 )
 
 const (
-	csvFile      = "<some-csv-file>"
-	panoramaNode = "<IP/hostname>" // Panorama IP/Hostname
-	pktCount     = 4               // How many ping packets to send to a host
+	version       = "1.2"
+	pktCount      = 4 // How many ping packets to send to a host
+	allDeviceGrps = "*ALL-DEVICE-GROUPS*"
 )
 
 var (
+	inputFile    string
 	fresh, stale []string // Containers for storing pingable and non-pingable hosts
 	deviceGrps   []string
+	re           *regexp.Regexp
 )
 
 // Represents an address object
@@ -39,47 +45,77 @@ type addrObj struct {
 	Value string
 }
 
+func init() {
+	re = regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+}
 func main() {
+	// Print version if requested
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "-v", "--version", "-V", "version":
+			fmt.Printf("Pecomm Version: %s\n", version)
+			os.Exit(0)
+		}
+	}
+	// Parse Flags
+	panoramaNode := flag.String("p", "", "Panorama IP Address (example: -p <panorama_ip/hostname>)")
+	flag.StringVar(&inputFile, "f", inputFile, "File to process (example: -f <file_name)")
+	flag.Parse()
+	if *panoramaNode == "" || inputFile == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	// Open input file
+	fmt.Printf("Attempting to open '%s'...\n", inputFile)
+	f, err := os.Open(inputFile)
+	handleError(err)
+	defer f.Close()
+	fmt.Printf("'%s' opened successfully!\n", inputFile)
+
+	// Parse the opened input file
+	fmt.Printf("Parsing %s..\n", inputFile)
+	var hosts []string
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		f := re.FindAllString(s.Text(), -1)
+		if len(f) != 0 {
+			for _, ip := range f {
+				addr, err := netip.ParseAddr(ip)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				} else {
+					hosts = append(hosts, addr.String())
+				}
+			}
+		}
+	}
+	if len(hosts) == 0 {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("error: no hosts found in file '%s'", inputFile))
+		os.Exit(1)
+	} else {
+		fmt.Println("Hosts found within the input file:", hosts)
+	}
+
 	// Get the user's credentials
 	fmt.Println(`
-********************************
-*| Enter Panorama Credentials |*
-********************************`)
+ ********************************
+ *| Enter Panorama Credentials |*
+ ********************************`)
 	user, pass := getCreds()
 
 	// Create a Panorama client & initialize it
 	panor := &pango.Panorama{
 		Client: pango.Client{
-			Hostname: panoramaNode,
+			Hostname: *panoramaNode,
 			Username: user,
 			Password: pass,
 		},
 	}
-	err := panor.Initialize()
-	handleError(err)
-
-	// Open CSV file
-	fmt.Printf("Attempting to open '%v'...\n", csvFile)
-	f, err := os.Open(csvFile)
-	handleError(err)
-	defer f.Close()
-	fmt.Printf("'%v' opened successfully!\n", csvFile)
-
-	// Parse the opened CSV filef
-	fmt.Println("Parsing CSV file..")
-	r := csv.NewReader(f)
-	l, err := r.ReadAll()
-	handleError(err)
-	var hosts []string
-	for _, host := range l {
-		hosts = append(hosts, host[0])
-	}
-	switch {
-	case len(hosts) == 0:
-		fmt.Fprintln(os.Stderr, fmt.Errorf("no hosts found in CSV file '%v'", csvFile))
+	if err = panor.Initialize(); err != nil {
+		err = fmt.Errorf("unable to connect - ensure you have valid credentials and/or that (%s) is online/valid", *panoramaNode)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
-	default:
-		fmt.Println("Hosts found within the CSV file:", hosts)
 	}
 
 	// Ping hosts to determine if decommissioned
@@ -105,9 +141,32 @@ func main() {
 	// Get a list of all the device groups
 	deviceGrps, err = panor.Panorama.DeviceGroup.GetList()
 	handleError(err)
-	deviceGrps = append(deviceGrps, "shared") // <- Add 'shared' device group to the list
+	deviceGrps = append(deviceGrps, "shared")      // <- Add 'shared' device group to the list
+	deviceGrps = append(deviceGrps, allDeviceGrps) // <- Add all device groups to the list
 
-	fmt.Println("**Device Groups Found:", deviceGrps)
+	fmt.Println(`
+ *******************
+ *| Device Groups |*
+ *******************`)
+	for i, dg := range deviceGrps {
+		fmt.Printf("[%d] - %s\n", i, dg)
+	}
+	fmt.Println("===========================================")
+	// Ask user which device group to process against
+	var selection string
+	input := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("Select the device group to process against: ")
+		input.Scan()
+		selection = input.Text()
+		selectionInt, err := strconv.Atoi(selection)
+		if err != nil || selectionInt > len(deviceGrps)-1 {
+			fmt.Println("Invalid selection")
+			continue
+		} else {
+			break
+		}
+	}
 
 	ch1 := make(chan []addrObj, len(deviceGrps))
 
@@ -149,63 +208,121 @@ func main() {
 		close(ch2)
 	}()
 
-	// Collection of address objects found on the Palo based on the stale hosts/servers
-	fmt.Println("**Found objects of hosts (that were unresponsive to pings) that will be removed:")
 	var foundObjs []addrObj // List of found obj
 	for objs := range ch2 {
-		fmt.Printf("%+v\n", objs)
 		foundObjs = append(foundObjs, objs...)
 	}
+	// If no address objects found for provided IPs (stale), exit
+	if len(foundObjs) == 0 {
+		fmt.Println("No address objects found for the hosts/servers provided, exiting..")
+		os.Exit(0)
+	}
+	// Collection of address objects found on the Palo based on the provided IPs (stale)
+	fmt.Println("**Found objects of hosts (that were unresponsive to pings) that will be removed:")
+	for _, obj := range foundObjs {
+		fmt.Printf("%+v\n", obj)
+	}
 
-	// Loop through all device groups and remove the address objects from any address groups
-	fmt.Println("**Removing objects from any address groups found across all device groups...")
-	for _, dg := range deviceGrps[:len(deviceGrps)-1] {
+	switch pick, _ := strconv.Atoi(selection); deviceGrps[pick] {
+	case allDeviceGrps:
+		deviceGrps = slices.Delete(deviceGrps, len(deviceGrps)-1, len(deviceGrps))
+
+		// Loop through all device groups and remove the address objects from any address groups
+		fmt.Println("**Removing objects from any address groups found across all device groups...")
+		for _, dg := range deviceGrps[:len(deviceGrps)-1] {
+			for _, fObj := range foundObjs {
+				err = removeFromAddrGroups(panor, dg, fObj.Name)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, fmt.Errorf("address Group List Error: %w", err))
+				}
+			}
+		}
+
+		// Loop through all device groups and remove the address objects from any security policies
+		fmt.Println("**Removing objects from security policies found across all device groups...")
+		for _, dg := range deviceGrps {
+			fmt.Printf("**Processing Device Group: '%v'\n", dg)
+			for _, fObj := range foundObjs {
+				err = removeFromSecPolicies(panor, dg, fObj.Name)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, fmt.Errorf("policy list error: %w", err))
+				}
+			}
+		}
+
+		// Loop through all device groups and remove the address objects from any NAT policies
+		fmt.Println("**Removing objects from NAT policies found across all device groups...")
+		for _, dg := range deviceGrps {
+			fmt.Printf("**Processing Device Group: '%v'\n", dg)
+			for _, fObj := range foundObjs {
+				err = removeFromNatPolicies(panor, dg, fObj.Name)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, fmt.Errorf("policy list error: %w", err))
+				}
+			}
+		}
+
+		// Loop through all device groups and remove the address objects
+		fmt.Println("**Removing objects of all found hosts across all device groups...")
+		for _, dg := range deviceGrps {
+			fmt.Printf("**Processing Device Group: '%v'\n", dg)
+			for _, fObj := range foundObjs {
+				err = removeAddrObj(panor, dg, fObj.Name)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, fmt.Errorf("object list error: %w", err))
+				}
+			}
+		}
+		fmt.Println(strings.Repeat("*", 88))
+		fmt.Println("*** Host(s) Cleanup Process Completed! Don't forget to review and commit the changes.***")
+		fmt.Println(strings.Repeat("*", 88))
+		os.Exit(0)
+
+	default:
+		pick, _ := strconv.Atoi(selection)
+		dg := deviceGrps[pick]
+
+		// Loop through device group and remove the address object(s) from any address groups
+		fmt.Println("**Removing object(s) from any address groups found in the selected device group...")
 		for _, fObj := range foundObjs {
 			err = removeFromAddrGroups(panor, dg, fObj.Name)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, fmt.Errorf("address Group List Error: %w", err))
+				fmt.Fprintln(os.Stderr, fmt.Errorf("address group list error: %w", err))
 			}
 		}
-	}
 
-	// Loop through all device groups and remove the address objects from any security policies
-	fmt.Println("**Removing objects from security policies found across all device groups...")
-	for _, dg := range deviceGrps {
-		fmt.Printf("**Processing Device Group: '%v'\n", dg)
+		// Loop through device group and remove the address object(s) from any security policies
+		fmt.Println("**Removing object(s) from security policies found in the selected device group...")
 		for _, fObj := range foundObjs {
 			err = removeFromSecPolicies(panor, dg, fObj.Name)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, fmt.Errorf("policy list error: %w", err))
 			}
 		}
-	}
 
-	// Loop through all device groups and remove the address objects from any NAT policies
-	fmt.Println("**Removing objects from NAT policies found across all device groups...")
-	for _, dg := range deviceGrps {
-		fmt.Printf("**Processing Device Group: '%v'\n", dg)
+		// Loop through device group and remove the address object(s) from any NAT policies
+		fmt.Println("**Removing object(s) from NAT policies found in the selected device group...")
 		for _, fObj := range foundObjs {
 			err = removeFromNatPolicies(panor, dg, fObj.Name)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, fmt.Errorf("policy list error: %w", err))
 			}
 		}
-	}
 
-	// Loop through all device groups and remove the address objects
-	fmt.Println("**Removing objects of all found hosts across all device groups...")
-	for _, dg := range deviceGrps {
-		fmt.Printf("**Processing Device Group: '%v'\n", dg)
+		// Loop through device group and remove the address object(s) themselves
+		fmt.Println("**Removing object(s) found in the selected device group...")
 		for _, fObj := range foundObjs {
 			err = removeAddrObj(panor, dg, fObj.Name)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, fmt.Errorf("object list error: %w", err))
 			}
 		}
+		fmt.Println(strings.Repeat("*", 88))
+		fmt.Println("*** Host(s) Cleanup Process Completed! Don't forget to review and commit the changes.***")
+		fmt.Println(strings.Repeat("*", 88))
+		os.Exit(0)
 	}
-	fmt.Println(strings.Repeat("*", 88))
-	fmt.Println("*** Host(s) Cleanup Process Completed! Don't forget to review and commit the changes.***")
-	fmt.Println(strings.Repeat("*", 88))
+
 }
 
 // Gets credentials from the user
