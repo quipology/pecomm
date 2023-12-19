@@ -4,7 +4,7 @@
 Pecomm is a firewall cleanup tool that finds and removes host objects from address groups, security policies, NAT policies and the host objects themselves from firewalls managed by Panorama.
 
 ## Potential Use Case
-Tickets are created in the organizations ticketing system for decommissioned servers in the environment that need to be removed from any related address objects or policies configured on firewalls managed by Panorama.
+Tickets are created in the organization's ticketing system for decommissioned servers in the environment that need to be removed from any related address objects or policies configured on firewalls managed by Panorama.
 
 ## Tool Logistics
 It will first load a file that is passed in (any file with plain text within it - .txt, .csv, .yaml, etc.) and attempt to ping the loaded hosts. Any hosts that do *NOT* respond to pings will be deemed worthy of removal from the selected device group (or *all* device groups if chosen) managed by a Panorama node. 
