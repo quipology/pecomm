@@ -73,7 +73,7 @@ Select the device group to process against:
 
 ## Things to Know
 
-- **Changes are not committed by pecomm - you must manually commit and push changes from within Panorama **
+- **Changes are not committed by pecomm - you must manually commit and push changes from within Panorama**
 - pecomm will NOT remove a host object itself post removing it from all address groups, security & NAT policies if it is associated with any firewall interfaces (this is a good thing)
 - Current version only works with ipv4 addresses
 
