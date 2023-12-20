@@ -78,4 +78,4 @@ Select the device group to process against:
 - Current version only works with ipv4 addresses
 
 ### Author
-*Bobby Williams | quipology@gmail.com*
+Bobby Williams | quipology@gmail.com
