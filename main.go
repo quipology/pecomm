@@ -177,6 +177,7 @@ func main() {
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				ch1 <- []addrObj{} // Put an empty slice on the channel if error received
+				return
 			}
 			ch1 <- objs
 		}(panor, dg)
