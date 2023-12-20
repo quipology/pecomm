@@ -67,7 +67,7 @@ func removeFromAddrGroups(p *pango.Panorama, dg, obj string) error {
 	return nil
 }
 
-// This removes an object from all a device group's security policies (pre + post)
+// This removes an object from all a device group's security policies (including pre & post)
 func removeFromSecPolicies(p *pango.Panorama, dg, obj string) error {
 	rulebases := []string{
 		util.PreRulebase,
@@ -95,7 +95,7 @@ func removeFromSecPolicies(p *pango.Panorama, dg, obj string) error {
 	return nil
 }
 
-// This removes an object from all device group's NAT policies (pre + post)
+// This removes an object from all device group's NAT policies (including pre & post)
 func removeFromNatPolicies(p *pango.Panorama, dg, obj string) error {
 	rulebases := []string{
 		util.PreRulebase,
