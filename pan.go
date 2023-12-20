@@ -54,15 +54,20 @@ func removeFromAddrGroups(p *pango.Panorama, dg, obj string) error {
 		return err
 	}
 	for _, entry := range entries {
-		newStaticAddresses := removeFromSlice(entry.StaticAddresses, obj)
-		newEntry := addrgrp.Entry{
-			Name:            entry.Name,
-			Description:     entry.Description,
-			StaticAddresses: newStaticAddresses,
-			DynamicMatch:    entry.DynamicMatch,
-			Tags:            entry.Tags,
+		for _, address := range entry.StaticAddresses {
+			if address == obj {
+				newStaticAddresses := removeFromSlice(entry.StaticAddresses, obj)
+				newEntry := addrgrp.Entry{
+					Name:            entry.Name,
+					Description:     entry.Description,
+					StaticAddresses: newStaticAddresses,
+					DynamicMatch:    entry.DynamicMatch,
+					Tags:            entry.Tags,
+				}
+				p.Objects.AddressGroup.Edit(dg, newEntry)
+			}
 		}
-		p.Objects.AddressGroup.Edit(dg, newEntry)
+
 	}
 	return nil
 }
@@ -79,16 +84,47 @@ func removeFromSecPolicies(p *pango.Panorama, dg, obj string) error {
 		if err != nil {
 			return err
 		}
+	Policy:
 		for _, policy := range policies {
-			var newPolicy security.Entry
-			newPolicy.Copy(policy)
-			newPolicy.Name = policy.Name
-			newPolicy.Uuid = policy.Uuid
-			newPolicy.SourceAddresses = removeFromSlice(newPolicy.SourceAddresses, obj)
-			newPolicy.DestinationAddresses = removeFromSlice(newPolicy.DestinationAddresses, obj)
-			err = p.Policies.Security.Edit(dg, rulebase, newPolicy)
-			if err != nil {
-				fmt.Println("Security Policy Edit Error:", err)
+			for _, srcAddress := range policy.SourceAddresses {
+				if srcAddress == obj {
+					if len(policy.SourceAddresses) == 1 {
+						err = p.Policies.Security.Delete(dg, rulebase, policy)
+						if err != nil {
+							fmt.Println("Security Policy Delete Error:", err)
+						}
+						continue Policy
+					}
+					var newPolicy security.Entry
+					newPolicy.Copy(policy)
+					newPolicy.Name = policy.Name
+					newPolicy.Uuid = policy.Uuid
+					newPolicy.SourceAddresses = removeFromSlice(newPolicy.SourceAddresses, obj)
+					err = p.Policies.Security.Edit(dg, rulebase, newPolicy)
+					if err != nil {
+						fmt.Println("Security Policy Edit Error:", err)
+					}
+				}
+			}
+			for _, dstAddress := range policy.DestinationAddresses {
+				if dstAddress == obj {
+					if len(policy.DestinationAddresses) == 1 {
+						err = p.Policies.Security.Delete(dg, rulebase, policy)
+						if err != nil {
+							fmt.Println("Security Policy Delete Error:", err)
+						}
+						continue Policy
+					}
+					var newPolicy security.Entry
+					newPolicy.Copy(policy)
+					newPolicy.Name = policy.Name
+					newPolicy.Uuid = policy.Uuid
+					newPolicy.DestinationAddresses = removeFromSlice(newPolicy.DestinationAddresses, obj)
+					err = p.Policies.Security.Edit(dg, rulebase, newPolicy)
+					if err != nil {
+						fmt.Println("Security Policy Edit Error:", err)
+					}
+				}
 			}
 		}
 	}
@@ -107,41 +143,158 @@ func removeFromNatPolicies(p *pango.Panorama, dg, obj string) error {
 		if err != nil {
 			return err
 		}
+	Policy:
 		for _, policy := range policies {
-			var newPolicy nat.Entry
-			newPolicy.Copy(policy)
-			newPolicy.Name = policy.Name
-			newPolicy.Uuid = policy.Uuid
-			// These fields must be set inorder to edit the policy
-			if newPolicy.Type == "" {
-				newPolicy.Type = "ipv4"
+			for _, srcAddress := range policy.SourceAddresses {
+				if srcAddress == obj {
+					if len(policy.SourceAddresses) == 1 {
+						err = p.Policies.Nat.Delete(dg, rulebase, policy)
+						if err != nil {
+							fmt.Println("NAT Policy Delete Error:", err)
+						}
+						continue Policy
+					}
+					var newPolicy nat.Entry
+					newPolicy.Copy(policy)
+					newPolicy.Name = policy.Name
+					newPolicy.Uuid = policy.Uuid
+					// These fields must be set inorder to edit the policy
+					if newPolicy.Type == "" {
+						newPolicy.Type = "ipv4"
+					}
+					if newPolicy.ToInterface == "" {
+						newPolicy.ToInterface = "any"
+					}
+					if newPolicy.Service == "" {
+						newPolicy.Service = "any"
+					}
+					if newPolicy.SatType == "" {
+						newPolicy.SatType = "none"
+					}
+					if newPolicy.DatType == "" {
+						newPolicy.SatType = "none"
+					}
+					newPolicy.SourceAddresses = removeFromSlice(newPolicy.SourceAddresses, obj)
+					err = p.Policies.Nat.Edit(dg, rulebase, newPolicy)
+					if err != nil {
+						fmt.Println("NAT Policy Edit Error:", err)
+					}
+				}
 			}
-			if newPolicy.ToInterface == "" {
-				newPolicy.ToInterface = "any"
+			for _, dstAddress := range policy.DestinationAddresses {
+				if dstAddress == obj {
+					if len(policy.DestinationAddresses) == 1 {
+						err = p.Policies.Nat.Delete(dg, rulebase, policy)
+						if err != nil {
+							fmt.Println("NAT Policy Delete Error:", err)
+						}
+						continue Policy
+					}
+					var newPolicy nat.Entry
+					newPolicy.Copy(policy)
+					newPolicy.Name = policy.Name
+					newPolicy.Uuid = policy.Uuid
+					// These fields must be set inorder to edit the policy
+					if newPolicy.Type == "" {
+						newPolicy.Type = "ipv4"
+					}
+					if newPolicy.ToInterface == "" {
+						newPolicy.ToInterface = "any"
+					}
+					if newPolicy.Service == "" {
+						newPolicy.Service = "any"
+					}
+					if newPolicy.SatType == "" {
+						newPolicy.SatType = "none"
+					}
+					if newPolicy.DatType == "" {
+						newPolicy.SatType = "none"
+					}
+					newPolicy.DestinationAddresses = removeFromSlice(newPolicy.DestinationAddresses, obj)
+					err = p.Policies.Nat.Edit(dg, rulebase, newPolicy)
+					if err != nil {
+						fmt.Println("NAT Policy Edit Error:", err)
+					}
+				}
 			}
-			if newPolicy.Service == "" {
-				newPolicy.Service = "any"
+			for _, satTranAddress := range policy.SatTranslatedAddresses {
+				if satTranAddress == obj {
+					if len(policy.SatStaticTranslatedAddress) == 1 {
+						err = p.Policies.Nat.Delete(dg, rulebase, policy)
+						if err != nil {
+							fmt.Println("NAT Policy Delete Error:", err)
+						}
+						continue Policy
+					}
+					var newPolicy nat.Entry
+					newPolicy.Copy(policy)
+					newPolicy.Name = policy.Name
+					newPolicy.Uuid = policy.Uuid
+					// These fields must be set inorder to edit the policy
+					if newPolicy.Type == "" {
+						newPolicy.Type = "ipv4"
+					}
+					if newPolicy.ToInterface == "" {
+						newPolicy.ToInterface = "any"
+					}
+					if newPolicy.Service == "" {
+						newPolicy.Service = "any"
+					}
+					if newPolicy.SatType == "" {
+						newPolicy.SatType = "none"
+					}
+					if newPolicy.DatType == "" {
+						newPolicy.SatType = "none"
+					}
+					newPolicy.SatTranslatedAddresses = removeFromSlice(newPolicy.SatTranslatedAddresses, obj)
+					err = p.Policies.Nat.Edit(dg, rulebase, newPolicy)
+					if err != nil {
+						fmt.Println("NAT Policy Edit Error:", err)
+					}
+				}
 			}
-			if newPolicy.SatType == "" {
-				newPolicy.SatType = "none"
-			}
-			if newPolicy.DatType == "" {
-				newPolicy.SatType = "none"
-			}
-			newPolicy.SourceAddresses = removeFromSlice(newPolicy.SourceAddresses, obj)
-			newPolicy.DestinationAddresses = removeFromSlice(newPolicy.DestinationAddresses, obj)
-			newPolicy.SatTranslatedAddresses = removeFromSlice(newPolicy.SatTranslatedAddresses, obj)
-			newPolicy.SatFallbackTranslatedAddresses = removeFromSlice(newPolicy.SatFallbackTranslatedAddresses, obj)
-			err = p.Policies.Nat.Edit(dg, rulebase, newPolicy)
-			if err != nil {
-				fmt.Println("NAT Policy Edit Error:", err)
+			for _, satFallAddress := range policy.SatFallbackTranslatedAddresses {
+				if satFallAddress == obj {
+					if len(policy.SatFallbackTranslatedAddresses) == 1 {
+						err = p.Policies.Nat.Delete(dg, rulebase, policy)
+						if err != nil {
+							fmt.Println("NAT Policy Delete Error:", err)
+						}
+						continue Policy
+					}
+					var newPolicy nat.Entry
+					newPolicy.Copy(policy)
+					newPolicy.Name = policy.Name
+					newPolicy.Uuid = policy.Uuid
+					// These fields must be set inorder to edit the policy
+					if newPolicy.Type == "" {
+						newPolicy.Type = "ipv4"
+					}
+					if newPolicy.ToInterface == "" {
+						newPolicy.ToInterface = "any"
+					}
+					if newPolicy.Service == "" {
+						newPolicy.Service = "any"
+					}
+					if newPolicy.SatType == "" {
+						newPolicy.SatType = "none"
+					}
+					if newPolicy.DatType == "" {
+						newPolicy.SatType = "none"
+					}
+					newPolicy.SatFallbackTranslatedAddresses = removeFromSlice(newPolicy.SatFallbackTranslatedAddresses, obj)
+					err = p.Policies.Nat.Edit(dg, rulebase, newPolicy)
+					if err != nil {
+						fmt.Println("NAT Policy Edit Error:", err)
+					}
+				}
 			}
 		}
 	}
 	return nil
 }
 
-// This removes an object from all device groups
+// This removes an object from device group
 func removeAddrObj(p *pango.Panorama, dg, obj string) error {
 	objects, err := p.Objects.Address.GetList(dg)
 	if err != nil {

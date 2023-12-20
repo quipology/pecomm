@@ -1,4 +1,4 @@
-# pecomm v1.2
+# pecomm v1.2.1
 
 ## What's this?
 Pecomm is a firewall cleanup tool that finds and removes host objects from address groups, security policies, NAT policies and the host objects themselves from firewalls managed by Panorama.
@@ -13,11 +13,13 @@ Removal happens in this order:
 
 1. Remove found address objects from any address groups (from the device group(s) of your choosing)
 2. Remove found address objects from any security policies (from the device group(s) of your choosing)
+    - Security policy will be deleted if the address object is the only source or destination within the policy
 3. Remove found address objects from any NAT policies (from the device group(s) of your choosing)
+    - NAT policy will be deleted if the address object is the only source or destination within the policy
 4. Remove found address objects (from the device group(s) of your choosing)
 
 ## Usage
-`pecomm-v1.2-win-amd64.exe -f decommed_servers.txt -p 10.1.2.3`
+`pecomm-v1.2.1-win-amd64.exe -f decommed_servers.txt -p 10.1.2.3`
 
 The `-f` flag is to specify the file that you want pecomm to read and gather IPs from.  
 The `-p` flag is to specify the IP/hostname of the Panorama node.  
@@ -25,7 +27,7 @@ The `-h` flag is for help.
 
 ## In Action
 ```
-PS C:\some_dir> .\release\v1.2\pecomm-v1.2-win-amd64.exe -f tmp.txt -p 10.14.171.3
+PS C:\some_dir> .\release\v1.2.1\pecomm-v1.2.1-win-amd64.exe -f tmp.txt -p 10.14.171.3
 Attempting to open 'tmp.txt'...
 'tmp.txt' opened successfully!
 Parsing tmp.txt..
