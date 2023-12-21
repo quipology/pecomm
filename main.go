@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	version       = "1.2"
+	version       = "1.2.1"
 	pktCount      = 4 // How many ping packets to send to a host
 	allDeviceGrps = "*ALL-DEVICE-GROUPS*"
 )
