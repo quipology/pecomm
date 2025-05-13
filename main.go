@@ -23,7 +23,6 @@ import (
 
 	"github.com/PaloAltoNetworks/pango"
 	"github.com/go-ping/ping"
-	"github.com/howeyc/gopass"
 )
 
 const (
@@ -60,8 +59,9 @@ func main() {
 	// Parse Flags
 	panoramaNode := flag.String("p", "", "Panorama IP Address (example: -p <panorama_ip/hostname>)")
 	flag.StringVar(&inputFile, "f", inputFile, "File to process (example: -f <file_name)")
+	apiKey := flag.String("k", "", "API kEY (example: -k <API_KEY>)")
 	flag.Parse()
-	if *panoramaNode == "" || inputFile == "" {
+	if *panoramaNode == "" || inputFile == "" || *apiKey == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -97,19 +97,11 @@ func main() {
 		fmt.Println("Hosts found within the input file:", hosts)
 	}
 
-	// Get the user's credentials
-	fmt.Println(`
- ********************************
- *| Enter Panorama Credentials |*
- ********************************`)
-	user, pass := getCreds()
-
 	// Create a Panorama client & initialize it
 	panor := &pango.Panorama{
 		Client: pango.Client{
 			Hostname: *panoramaNode,
-			Username: user,
-			Password: pass,
+			ApiKey:   *apiKey,
 		},
 	}
 	if err = panor.Initialize(); err != nil {
@@ -324,18 +316,6 @@ func main() {
 		os.Exit(0)
 	}
 
-}
-
-// Gets credentials from the user
-func getCreds() (user, pass string) {
-	s := bufio.NewScanner(os.Stdin)
-	fmt.Print("Username: ")
-	s.Scan()
-	user = s.Text()
-	p, err := gopass.GetPasswdPrompt("Password: ", true, os.Stdin, os.Stdout)
-	handleError(err)
-	pass = string(p)
-	return
 }
 
 // Pings a host to determine if it receives a response
